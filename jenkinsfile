@@ -1,0 +1,54 @@
+pipeline {
+  agent {
+    label 'terraform'
+  }
+
+  parameters {
+    choice(name: 'tfenv', choices: ['dev', 'test', 'stage', 'prod'])
+  }
+
+  environment {
+    AWS_ACCESS_KEY_ID="${params.ACCESS_KEY}"
+    AWS_SECRET_ACCESS_KEY="${params.SECRET_KEY}"
+  }
+
+  stages {
+    stage('Init') {
+      steps {
+          sh "terraform init -reconfigure -backend-config config/${params.tfenv}.backend"
+      }
+    }
+
+    stage('Plan') {
+      steps {
+        sh "terraform plan --var-file='config/${params.tfenv}.tfvars'"
+      }
+    }
+
+    stage('Apply') {
+      when {
+        expression {
+          return !['none'].contains(params.tfenv)
+        }
+      }
+      steps {
+        timeout(time:600, unit: 'SECONDS') {
+          input 'Do you want to apply changes ?'
+        }
+        sh "terraform apply --var-file='config/${params.tfenv}.tfvars' --auto-approve"
+      }
+    }
+
+  }
+
+  post {
+    always {
+      echo 'done'
+    }
+    failure {
+            mail to: "dl@xxx.com",
+            subject: "Infra Deployment Failure",
+            body: "${build.BuildNumber}"
+    }
+  }
+}
